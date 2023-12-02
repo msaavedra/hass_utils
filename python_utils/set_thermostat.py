@@ -10,8 +10,17 @@ import os
 import sys
 import traceback
 import logging
+import logging.handlers
 
-logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+syslog_handler = logging.handlers.SysLogHandler("/dev/log")
+syslog_handler.level = logging.INFO
+logging.basicConfig(
+    level=logging.DEBUG,
+    handlers=[
+        logging.StreamHandler(),
+        syslog_handler,
+    ]
+)
 logger = logging.getLogger(__file__)
 
 
@@ -408,17 +417,21 @@ def mean_timestamp(timestamps: list[datetime], tz):
 
 
 def set_environment():
-    with open(".env.json", "r") as f:
-        env_data = json.load(f)
+    dirname = os.path.dirname(__file__)
+    path = os.path.join(dirname,".env.json")
+    logger.info(f"Loading environment from {path}")
+    try:
+        with open(path, "r") as f:
+            env_data = json.load(f)
 
-    if not hasattr(env_data, "items"):
-        logger.warning("Environment format not supported. Skipping.")
+        for key, value in env_data.items():
+            if not all([isinstance(key, str), isinstance(value, (str, int, float))]):
+                continue
+            logger.debug(f"{key}={value}")
+            os.environ[key] = value
 
-    for key, value in env_data.items():
-        if not all([isinstance(key, str), isinstance(value, (str, int, float))]):
-            continue
-
-        os.environ[key] = value
+    except Exception as e:
+        logger.warning("Environment loading failed. Skipping.")
 
 
 def get_config():
@@ -472,7 +485,7 @@ def main():
         sensor_data = get_sensor_data(config.hass_base_url)
         rules = ThermostatRules(config, sensor_data)
         strategy = rules.get_strategy()
-        print(
+        logger.info(
             f"{strategy.mode}: {strategy.get_temperature()} - {strategy.__class__.__name__}:"
             f" {strategy.explain_strategy()}"
         )
