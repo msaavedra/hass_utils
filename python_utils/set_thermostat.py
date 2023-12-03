@@ -140,6 +140,19 @@ class DataTransformer:
         return int(self.thermostat_attibutes["current_temperature"])
 
     @cached_property
+    def current_thermostat_mode(self) -> ThermostatMode:
+        if self.sensor_map[self.config.hvac_entity] == "heat":
+            return ThermostatMode.HEATING
+        else:
+            return ThermostatMode.COOLING
+
+    @cached_property
+    def thermostat_set_temperature(self) -> int:
+        temp = int(self.thermostat_attibutes["temperature"])
+        logger.debug(f"Set temperature: {temp}")
+        return temp
+
+    @cached_property
     def daylight_length(self) -> timedelta:
         sun_data = self.sensor_map["sun.sun"]
         next_rising = datetime.fromisoformat(sun_data["attributes"]["next_rising"]).astimezone(self.local_tzinfo)
@@ -485,11 +498,17 @@ def main():
         sensor_data = get_sensor_data(config.hass_base_url)
         rules = ThermostatRules(config, sensor_data)
         strategy = rules.get_strategy()
-        logger.info(
-            f"{strategy.mode}: {strategy.get_temperature()} - {strategy.__class__.__name__}:"
-            f" {strategy.explain_strategy()}"
-        )
-        set_thermostat_values(config, strategy)
+        if (
+                rules.transformer.thermostat_set_temperature == strategy.get_temperature()
+                and rules.transformer.current_thermostat_mode == strategy.mode
+        ):
+            logger.info(
+                f"{strategy.mode}: {strategy.get_temperature()} - {strategy.__class__.__name__}:"
+                f" {strategy.explain_strategy()}"
+            )
+            set_thermostat_values(config, strategy)
+        else:
+            logger.info(f"No change to thermostat - {strategy.mode}: {strategy.get_temperature()}")
     except Exception as e:
         traceback.print_exception(e)
         return 1
