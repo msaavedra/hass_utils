@@ -42,8 +42,8 @@ class Config:
     hass_base_url: str
     hvac_entity: str
     timezone: str
-    cool_weather_max: int = 69
-    cool_weather_min: int = 62
+    cool_weather_max: int = 68
+    cool_weather_min: int = 61
     warm_weather_max: int = 78
     warm_weather_min: int = 71
     peak_usage_start_time: str = "16:00"
@@ -310,6 +310,8 @@ class TemperatureStrategyBaseImplementation(TemperatureStrategy):
         return f"{self.__class__.__name__} - {self.mode.name}: {self.get_temperature()}"
 
     def matches_current_data(self, data_transformer: DataTransformer) -> bool:
+        logger.debug(f"Transformer({data_transformer.mode},{data_transformer.thermostat_set_temperature})")
+        logger.debug(str(self))
         return (
             data_transformer.thermostat_set_temperature == self.get_temperature()
             and data_transformer.current_thermostat_mode == self.mode
@@ -515,9 +517,9 @@ def main():
         rules = ThermostatRules(config, sensor_data)
         strategy = rules.get_strategy()
         if strategy.matches_current_data(rules.transformer):
-            logger.info(f"No change to strategy - {strategy}")
+            logger.info(f"No change to strategy {strategy}")
         else:
-            logger.info(f"{strategy} {strategy.explain_strategy()}")
+            logger.info(f"Setting thermostat strategy {strategy} {strategy.explain_strategy()}")
             set_thermostat_values(config, strategy)
     except Exception as e:
         traceback.print_exception(e)
