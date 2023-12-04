@@ -319,9 +319,10 @@ class TemperatureStrategyBaseImplementation(TemperatureStrategy):
             and data_transformer.current_thermostat_mode == self.mode
         )
         logger.debug(f"MATCHES: {matches}")
+        return matches
 
 
-class NobodyHomeStrategyBaseImplementation(TemperatureStrategyBaseImplementation):
+class NobodyHomeStrategy(TemperatureStrategyBaseImplementation):
     """When nobody is home, we want to use the least amount of energy."""
     cooling_level = TemperatureLevel.HIGHEST
     heating_level = TemperatureLevel.LOWEST
@@ -331,7 +332,7 @@ class NobodyHomeStrategyBaseImplementation(TemperatureStrategyBaseImplementation
         return transformer.number_of_people_at_home < 1
 
 
-class StandardStrategyBaseImplementation(TemperatureStrategyBaseImplementation):
+class StandardStrategy(TemperatureStrategyBaseImplementation):
     """Typical strategy that can be used when none of the others are suitable."""
     cooling_level = TemperatureLevel.MEDIUM
     heating_level = TemperatureLevel.MEDIUM
@@ -341,7 +342,7 @@ class StandardStrategyBaseImplementation(TemperatureStrategyBaseImplementation):
         return True
 
 
-class ReadyForBedStrategyBaseImplementation(TemperatureStrategyBaseImplementation):
+class ReadyForBedStrategy(TemperatureStrategyBaseImplementation):
     """When settling into bed, most people like the temperature to be cool."""
     cooling_level = TemperatureLevel.LOWEST
     heating_level = TemperatureLevel.LOW
@@ -360,7 +361,7 @@ class ReadyForBedStrategyBaseImplementation(TemperatureStrategyBaseImplementatio
         return False
 
 
-class WakingUpStrategyBaseImplementation(TemperatureStrategyBaseImplementation):
+class WakingUpStrategy(TemperatureStrategyBaseImplementation):
     """It's nice to have the house warmer when getting out of bed, especially on cold days."""
     cooling_level = TemperatureLevel.MEDIUM
     heating_level = TemperatureLevel.HIGH
@@ -380,7 +381,7 @@ class WakingUpStrategyBaseImplementation(TemperatureStrategyBaseImplementation):
         return False
 
 
-class SleepingStrategyBaseImplementation(TemperatureStrategyBaseImplementation):
+class SleepingStrategy(TemperatureStrategyBaseImplementation):
     """While sleeping, most people like to balance between coolness and saving energy."""
     cooling_level = TemperatureLevel.MEDIUM
     heating_level = TemperatureLevel.LOWEST
@@ -392,7 +393,7 @@ class SleepingStrategyBaseImplementation(TemperatureStrategyBaseImplementation):
         return transformer.current_timestamp in TimeRange(sleep_start, sleep_end)
 
 
-class NearlyPeakStrategyBaseImplementation(TemperatureStrategyBaseImplementation):
+class NearlyPeakStrategy(TemperatureStrategyBaseImplementation):
     """When it's almost peak usage time, we should use a bit more energy while it's still cheap."""
     cooling_level = TemperatureLevel.LOW
     heating_level = TemperatureLevel.MEDIUM  # set to high if electric heat
@@ -404,7 +405,7 @@ class NearlyPeakStrategyBaseImplementation(TemperatureStrategyBaseImplementation
         return transformer.current_timestamp in TimeRange(nearly_peak_start, nearly_peak_end)
 
 
-class PeakUsageStrategyBaseImplementation(TemperatureStrategyBaseImplementation):
+class PeakUsageStrategy(TemperatureStrategyBaseImplementation):
     """Prices are high during peak usage times, so we want to reduce energy usage a bit."""
     # This only reduces power use for cooling, as most heaters are natural-gas-powered, and there
     # usually aren't time of use plans for gas. There are electric heaters, though, so this can
@@ -419,12 +420,12 @@ class PeakUsageStrategyBaseImplementation(TemperatureStrategyBaseImplementation)
 
 class ThermostatRules:
     strategies_by_priority = (
-        NobodyHomeStrategyBaseImplementation,
-        ReadyForBedStrategyBaseImplementation,
-        WakingUpStrategyBaseImplementation,
-        PeakUsageStrategyBaseImplementation,
-        NearlyPeakStrategyBaseImplementation,
-        SleepingStrategyBaseImplementation,
+        NobodyHomeStrategy,
+        ReadyForBedStrategy,
+        WakingUpStrategy,
+        PeakUsageStrategy,
+        NearlyPeakStrategy,
+        SleepingStrategy,
     )
 
     def __init__(self, config: Config, sensor_data: list[dict[str, Any]]):
@@ -435,7 +436,7 @@ class ThermostatRules:
             if strategy_class.meets_criteria(self.transformer):
                 break
         else:
-            strategy_class = StandardStrategyBaseImplementation
+            strategy_class = StandardStrategy
 
         return strategy_class(self.transformer.mode, self.transformer.thermostat_range)
 
