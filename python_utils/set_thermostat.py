@@ -307,7 +307,7 @@ class TemperatureStrategyBaseImplementation(TemperatureStrategy):
         return self.__doc__
 
     def __str__(self) -> str:
-        return f"{self.__class__.__name__} - {self.mode.name}: {self.get_temperature}"
+        return f"{self.__class__.__name__} - {self.mode.name}: {self.get_temperature()}"
 
     def matches_current_data(self, data_transformer: DataTransformer) -> bool:
         return (
