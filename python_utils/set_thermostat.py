@@ -4,7 +4,7 @@ from datetime import time, datetime, timedelta
 from enum import Enum, IntEnum
 from functools import cached_property
 from time import mktime
-from typing import Protocol, Any, Optional
+from typing import Protocol, Any, Optional, runtime_checkable
 from zoneinfo import ZoneInfo
 import os
 import sys
@@ -13,7 +13,7 @@ import logging
 import logging.handlers
 
 syslog_handler = logging.handlers.SysLogHandler("/dev/log")
-syslog_handler.level = logging.INFO
+syslog_handler.level = logging.DEBUG
 logging.basicConfig(
     level=logging.DEBUG,
     handlers=[
@@ -267,6 +267,7 @@ class DataTransformer:
         )
 
 
+@runtime_checkable
 class TemperatureStrategy(Protocol):
     cooling_level: TemperatureLevel
     heating_level: TemperatureLevel
@@ -281,6 +282,12 @@ class TemperatureStrategy(Protocol):
 
     @classmethod
     def meets_criteria(cls, transformer: DataTransformer) -> bool:
+        ...
+
+    def __str__(self) -> str:
+        ...
+
+    def matches_current_data(self, transformer: DataTransformer) -> bool:
         ...
 
 
@@ -298,6 +305,15 @@ class TemperatureStrategyBaseImplementation(TemperatureStrategy):
 
     def explain_strategy(self) -> str:
         return self.__doc__
+
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__} - {self.mode.name}: {self.get_temperature}"
+
+    def matches_current_data(self, data_transformer: DataTransformer) -> bool:
+        return (
+            data_transformer.thermostat_set_temperature == self.get_temperature()
+            and data_transformer.current_thermostat_mode == self.mode
+        )
 
 
 class NobodyHomeStrategyBaseImplementation(TemperatureStrategyBaseImplementation):
@@ -498,17 +514,11 @@ def main():
         sensor_data = get_sensor_data(config.hass_base_url)
         rules = ThermostatRules(config, sensor_data)
         strategy = rules.get_strategy()
-        if (
-                rules.transformer.thermostat_set_temperature == strategy.get_temperature()
-                and rules.transformer.current_thermostat_mode == strategy.mode
-        ):
-            logger.info(
-                f"{strategy.mode}: {strategy.get_temperature()} - {strategy.__class__.__name__}:"
-                f" {strategy.explain_strategy()}"
-            )
-            set_thermostat_values(config, strategy)
+        if strategy.matches_current_data(rules.transformer):
+            logger.info(f"No change to strategy - {strategy}")
         else:
-            logger.info(f"No change to thermostat - {strategy.mode}: {strategy.get_temperature()}")
+            logger.info(f"{strategy} {strategy.explain_strategy()}")
+            set_thermostat_values(config, strategy)
     except Exception as e:
         traceback.print_exception(e)
         return 1
