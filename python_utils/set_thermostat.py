@@ -310,12 +310,15 @@ class TemperatureStrategyBaseImplementation(TemperatureStrategy):
         return f"{self.__class__.__name__} - {self.mode.name}: {self.get_temperature()}"
 
     def matches_current_data(self, data_transformer: DataTransformer) -> bool:
-        logger.debug(f"Transformer({data_transformer.mode},{data_transformer.thermostat_set_temperature})")
+        logger.debug(
+            f"Transformer({data_transformer.current_thermostat_mode},"
+            f"{data_transformer.thermostat_set_temperature})")
         logger.debug(str(self))
-        return (
+        matches = (
             data_transformer.thermostat_set_temperature == self.get_temperature()
             and data_transformer.current_thermostat_mode == self.mode
         )
+        logger.debug(f"MATCHES: {matches}")
 
 
 class NobodyHomeStrategyBaseImplementation(TemperatureStrategyBaseImplementation):
