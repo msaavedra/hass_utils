@@ -141,7 +141,7 @@ class DataTransformer:
 
     @cached_property
     def current_thermostat_mode(self) -> ThermostatMode:
-        if self.sensor_map[self.config.hvac_entity] == "heat":
+        if self.sensor_map[self.config.hvac_entity]["state"] == "heat":
             return ThermostatMode.HEATING
         else:
             return ThermostatMode.COOLING
