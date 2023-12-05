@@ -349,8 +349,14 @@ class ReadyForBedStrategy(TemperatureStrategyBaseImplementation):
 
     @classmethod
     def meets_criteria(cls, transformer: DataTransformer) -> bool:
-        ready_for_bed_start = transformer.bed_times[0] - timedelta(minutes=15)
-        ready_for_bed_end = transformer.bed_times[-1]
+        approaching_bed_times = [
+            bt for bt in transformer.bed_times if (bt - transformer.current_timestamp) < timedelta(hours=8)
+        ]
+        if not approaching_bed_times:
+            return False
+
+        ready_for_bed_start = approaching_bed_times[0] - timedelta(minutes=15)
+        ready_for_bed_end = min([transformer.bed_times[-1], (ready_for_bed_start + timedelta(hours=3))])
         logger.debug(
             f"Ready for bed: {ready_for_bed_start} - {ready_for_bed_end}."
             f" Current: {transformer.current_timestamp}"
@@ -421,8 +427,8 @@ class PeakUsageStrategy(TemperatureStrategyBaseImplementation):
 class ThermostatRules:
     strategies_by_priority = (
         NobodyHomeStrategy,
-        ReadyForBedStrategy,
         WakingUpStrategy,
+        ReadyForBedStrategy,
         PeakUsageStrategy,
         NearlyPeakStrategy,
         SleepingStrategy,
