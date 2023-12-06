@@ -12,15 +12,7 @@ import traceback
 import logging
 import logging.handlers
 
-syslog_handler = logging.handlers.SysLogHandler("/dev/log")
-syslog_handler.level = logging.DEBUG
-logging.basicConfig(
-    level=logging.DEBUG,
-    handlers=[
-        logging.StreamHandler(),
-        syslog_handler,
-    ]
-)
+
 logger = logging.getLogger(__file__)
 
 
@@ -50,6 +42,8 @@ class Config:
     peak_usage_end_time: str = "21:00"
     default_bed_time: str = "23:00"
     default_wake_time: str = "8:00"
+    syslog_path: str = "/dev/log"
+    syslog_level: str = "INFO"
 
 
 @dataclass
@@ -464,30 +458,33 @@ def mean_timestamp(timestamps: list[datetime], tz):
     return datetime.fromtimestamp(mean_seconds, tz=tz)
 
 
-def set_environment():
-    dirname = os.path.dirname(__file__)
-    path = os.path.join(dirname,".env.json")
-    logger.info(f"Loading environment from {path}")
+class ConfigFileError(Exception):
+    pass
+
+
+def load_json(file_name):
+    dir_name = os.path.dirname(__file__)
+    path = os.path.join(dir_name, file_name)
     try:
         with open(path, "r") as f:
-            env_data = json.load(f)
+            return json.load(f)
+    except Exception as exc:
+        raise ConfigFileError(f"Could not load json data from '{path}'.") from exc
 
-        for key, value in env_data.items():
-            if not all([isinstance(key, str), isinstance(value, (str, int, float))]):
-                continue
-            logger.debug(f"{key}={value}")
-            os.environ[key] = value
 
-    except Exception as e:
-        logger.warning("Environment loading failed. Skipping.")
+def set_environment():
+    env_data = load_json(".env.json")
+    if "HASS_TOKEN" not in env_data:
+        raise ConfigFileError('The .env.json file must contain a "HASS_TOKEN" object')
+    for key, value in env_data.items():
+        if not all([isinstance(key, str), isinstance(value, (str, int, float))]):
+            continue
+        os.environ[key] = value
 
 
 def get_config():
-    return Config(
-        hass_base_url="http://citrine.home:8123",
-        hvac_entity="climate.t6_pro_z_wave_programmable_thermostat",
-        timezone="America/Los_Angeles",
-    )
+    config_data = load_json("config.json")
+    return Config(**config_data)
 
 
 def get_sensor_data(hass_base_url):
@@ -528,8 +525,32 @@ def set_thermostat_values(config: Config, strategy: TemperatureStrategy):
 
 def main():
     try:
-        set_environment()
         config = get_config()
+        syslog_handler = logging.handlers.SysLogHandler(config.syslog_path)
+        syslog_handler.level = getattr(logging, config.syslog_level)
+        logging.basicConfig(
+            level=logging.DEBUG,
+            handlers=[
+                logging.StreamHandler(),
+                syslog_handler,
+            ]
+        )
+    except ConfigFileError:
+        # set up logging with generally sane defaults.
+        syslog_handler = logging.handlers.SysLogHandler("/dev/log")
+        syslog_handler.level = logging.DEBUG
+        logging.basicConfig(
+            level=logging.DEBUG,
+            handlers=[
+                logging.StreamHandler(),
+                syslog_handler,
+            ]
+        )
+        logger.error("Could not read config file.")
+        return 1
+
+    try:
+        set_environment()
         sensor_data = get_sensor_data(config.hass_base_url)
         rules = ThermostatRules(config, sensor_data)
         strategy = rules.get_strategy()
@@ -538,8 +559,8 @@ def main():
         else:
             logger.info(f"Setting thermostat strategy {strategy} {strategy.explain_strategy()}")
             set_thermostat_values(config, strategy)
-    except Exception as e:
-        traceback.print_exception(e)
+    except Exception:
+        logger.error("Setting thermostat failed.")
         return 1
 
     return 0
