@@ -121,7 +121,7 @@ class DataTransformer:
 
     @cached_property
     def hard_min_temp(self) -> int:
-        return int(self.thermostat_attibutes["max_temp"])
+        return int(self.thermostat_attibutes["min_temp"])
 
     @cached_property
     def last_midnight(self) -> datetime:
@@ -225,23 +225,30 @@ class DataTransformer:
     @cached_property
     def mode(self) -> ThermostatMode:
         if "MODE_OVERRIDE" in os.environ:
+            logger.debug(f"Using override mode {os.environ['MODE_OVERRIDE']}.")
             return ThermostatMode(os.environ["MODE_OVERRIDE"])
 
         if self.current_indoor_temperature >= self.hard_max_temp:
+            logger.debug(f"Using mode {ThermostatMode.COOLING} because we're over hard max temp.")
             return ThermostatMode.COOLING
 
         if self.current_indoor_temperature <= self.hard_min_temp:
-            return ThermostatMode.HEATING
-
-        if self.forecast.high > self.config.cool_weather_max:
-            return ThermostatMode.COOLING
-
-        if self.forecast.low < self.config.warm_weather_min:
+            logger.debug(f"Using mode {ThermostatMode.HEATING} because we're under hard min temp.")
             return ThermostatMode.HEATING
 
         if self.daylight_length < timedelta(hours=10, minutes=30):
+            logger.debug(f"Using mode {ThermostatMode.HEATING} because daylight length is {self.daylight_length}.")
             return ThermostatMode.HEATING
 
+        if self.forecast.high > self.config.cool_weather_max:
+            logger.debug(f"Using mode {ThermostatMode.COOLING} because the expected high is {self.forecast.high}.")
+            return ThermostatMode.COOLING
+
+        if self.forecast.low < self.config.warm_weather_min:
+            logger.debug(f"Using mode {ThermostatMode.HEATING} because the expected low is {self.forecast.low}.")
+            return ThermostatMode.HEATING
+
+        logger.debug(f"Using mode {ThermostatMode.COOLING} because no other checks matched.")
         return ThermostatMode.COOLING
 
     @cached_property
