@@ -397,6 +397,10 @@ class SleepingStrategy(TemperatureStrategyBaseImplementation):
     def meets_criteria(cls, transformer: DataTransformer) -> bool:
         sleep_start = min(transformer.bed_times)
         sleep_end = max(transformer.wake_times)
+        logger.debug(
+            f"Sleep times: {sleep_start} - {sleep_end}."
+            f" Current: {transformer.current_timestamp}"
+        )
         return transformer.current_timestamp in TimeRange(sleep_start, sleep_end)
 
 
