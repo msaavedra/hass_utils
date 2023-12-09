@@ -40,7 +40,7 @@ class Config:
     warm_weather_min: int = 71
     peak_usage_start_time: str = "16:00"
     peak_usage_end_time: str = "21:00"
-    default_bed_time: str = "23:00"
+    expected_sleep_interval: str = "8:00"
     default_wake_time: str = "8:00"
     syslog_path: str = "/dev/log"
     syslog_level: str = "INFO"
@@ -203,15 +203,13 @@ class DataTransformer:
     @cached_property
     def wake_times(self) -> list[datetime]:
         if not self.alarms:
-            return [self._time_str_to_datetime(self.config.default_wake_time)]
+            return [self._time_str_to_datetime(self.config.default_wake_time, future_only=True)]
 
         return self.alarms
 
     @cached_property
     def bed_times(self) -> list[datetime]:
-        if not self.alarms:
-            return [self._time_str_to_datetime(self.config.default_bed_time)]
-        bed_times = [a - timedelta(hours=8) for a in self.alarms]
+        bed_times = [a - self._time_str_to_timedelta(self.config.expected_sleep_interval) for a in self.wake_times]
         bed_times.sort()
         logger.debug(f"Bed times: {[bt.isoformat() for bt in bed_times]}")
         return bed_times
@@ -252,7 +250,7 @@ class DataTransformer:
         else:
             return TemperatureRange(self.config.cool_weather_min, self.config.cool_weather_max)
 
-    def _time_str_to_datetime(self, time_str):
+    def _time_str_to_datetime(self, time_str: str, future_only: bool = False) -> datetime:
         hour, _, minute = time_str.partition(":")
         if len(hour) != 2:
             hour = hour[:2].rjust(2, "0")
@@ -261,12 +259,24 @@ class DataTransformer:
 
         time_str = f"{hour}:{minute}"
 
-        return datetime.combine(
+        timestamp = datetime.combine(
             self.last_midnight,
             time.fromisoformat(time_str),
             tzinfo=self.local_tzinfo,
         )
+        if future_only and timestamp < self.current_timestamp:
+            timestamp += timedelta(hours=24)
 
+        return timestamp
+
+    def _time_str_to_timedelta(self, time_str: str) -> timedelta:
+        hour, _, minute = time_str.partition(":")
+        if len(hour) != 2:
+            hour = hour[:2]
+        if len(minute) != 2:
+            minute = minute[:2]
+
+        return timedelta(hours=int(hour), minutes=int(minute))
 
 @runtime_checkable
 class TemperatureStrategy(Protocol):
@@ -397,6 +407,8 @@ class SleepingStrategy(TemperatureStrategyBaseImplementation):
     def meets_criteria(cls, transformer: DataTransformer) -> bool:
         sleep_start = min(transformer.bed_times)
         sleep_end = max(transformer.wake_times)
+        if sleep_start > sleep_end:
+            sleep_start -= timedelta(hours=24)
         logger.debug(
             f"Sleep times: {sleep_start} - {sleep_end}."
             f" Current: {transformer.current_timestamp}"
@@ -444,6 +456,7 @@ class ThermostatRules:
 
     def get_strategy(self) -> TemperatureStrategy:
         for strategy_class in self.strategies_by_priority:
+            logger.debug(f"Checking strategy {strategy_class.__name__}")
             if strategy_class.meets_criteria(self.transformer):
                 break
         else:
@@ -563,8 +576,8 @@ def main():
         else:
             logger.info(f"Setting thermostat strategy {strategy} {strategy.explain_strategy()}")
             set_thermostat_values(config, strategy)
-    except Exception:
-        logger.error("Setting thermostat failed.")
+    except Exception as exc:
+        logger.error(f"Setting thermostat failed:\n {traceback.format_exc()}")
         return 1
 
     return 0
