@@ -387,7 +387,7 @@ class WakingUpStrategy(TemperatureStrategyBaseImplementation):
     def meets_criteria(cls, transformer: DataTransformer) -> bool:
         for alarm in transformer.alarms:
             waking_up_start = alarm - timedelta(minutes=20)
-            waking_up_end = alarm + timedelta(minutes=30)
+            waking_up_end = alarm + timedelta(minutes=50)
             logger.debug(
                 f"Waking up times: {waking_up_start} - {waking_up_end}."
                 f" Current: {transformer.current_timestamp}"
