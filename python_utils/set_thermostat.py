@@ -7,6 +7,7 @@ from time import mktime
 from typing import Protocol, Any, Optional, runtime_checkable
 from zoneinfo import ZoneInfo
 import os
+import re
 import sys
 import traceback
 import logging
@@ -315,7 +316,8 @@ class TemperatureStrategyBaseImplementation(TemperatureStrategy):
         return self.thermostat_range.choose_temperature_by_level(self.heating_level)
 
     def explain_strategy(self) -> str:
-        return self.__doc__
+        name = " ".join(re.split("(?<=[a-z])(?=[A-Z])", self.__class__.__name__))
+        return f"{name} - {self.__doc__}"
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__} - {self.mode.name}: {self.get_temperature()}"
@@ -538,6 +540,14 @@ def set_thermostat_values(config: Config, strategy: TemperatureStrategy):
     )
     assert response.status < 300
     logger.debug(f"Thermostat set response: {response.read()}")
+
+    url = f"{config.hass_base_url}/api/states/input_text.thermostat_control_explanation"
+    post_data = {"state": strategy.explain_strategy()}
+    response = request.urlopen(
+        request.Request(url, headers=headers, data=json.dumps(post_data).encode("utf-8"), method="POST")
+    )
+    assert response.status < 300
+    logger.debug(f"Explanation response: {response.read()}")
 
 
 def main():
