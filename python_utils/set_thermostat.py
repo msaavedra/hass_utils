@@ -144,7 +144,7 @@ class DataTransformer:
 
     @cached_property
     def current_thermostat_explanation(self) -> Optional[str]:
-        explanation = self.sensor_map.get(self.config.explanation_entity).get("state")
+        explanation = self.sensor_map.get(self.config.explanation_entity, {}).get("state")
         logger.debug(f"Current thermostat explanation: {explanation}")
         return explanation
 
