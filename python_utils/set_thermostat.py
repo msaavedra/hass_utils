@@ -42,9 +42,10 @@ class Config:
     peak_usage_start_time: str = "16:00"
     peak_usage_end_time: str = "21:00"
     expected_sleep_interval: str = "8:00"
-    default_wake_time: str = "8:00"
+    default_wake_time: str = "8:30"
     syslog_path: str = "/dev/log"
     syslog_level: str = "INFO"
+    explanation_entity: Optional[str] = "input_text.thermostat_control_explanation"
 
 
 @dataclass
@@ -142,6 +143,12 @@ class DataTransformer:
             return ThermostatMode.COOLING
 
     @cached_property
+    def current_thermostat_explanation(self) -> Optional[str]:
+        explanation = self.sensor_map.get(self.config.explanation_entity)
+        logger.debug(f"Current thermostat explanation: {explanation}")
+        return explanation
+
+    @cached_property
     def thermostat_set_temperature(self) -> int:
         temp = int(self.thermostat_attibutes["temperature"])
         logger.debug(f"Set temperature: {temp}")
@@ -203,10 +210,10 @@ class DataTransformer:
 
     @cached_property
     def wake_times(self) -> list[datetime]:
-        if not self.alarms:
-            return [self._time_str_to_datetime(self.config.default_wake_time, future_only=True)]
-
-        return self.alarms
+        default_wake_time = self._time_str_to_datetime(self.config.default_wake_time)
+        wake_times = [a for a in self.alarms if a < default_wake_time]
+        logger.debug(f"Wake times: {[wt.isoformat() for wt in wake_times]}")
+        return wake_times or [default_wake_time]
 
     @cached_property
     def bed_times(self) -> list[datetime]:
@@ -251,7 +258,7 @@ class DataTransformer:
         else:
             return TemperatureRange(self.config.cool_weather_min, self.config.cool_weather_max)
 
-    def _time_str_to_datetime(self, time_str: str, future_only: bool = False) -> datetime:
+    def _time_str_to_datetime(self, time_str: str) -> datetime:
         hour, _, minute = time_str.partition(":")
         if len(hour) != 2:
             hour = hour[:2].rjust(2, "0")
@@ -265,8 +272,6 @@ class DataTransformer:
             time.fromisoformat(time_str),
             tzinfo=self.local_tzinfo,
         )
-        if future_only and timestamp < self.current_timestamp:
-            timestamp += timedelta(hours=24)
 
         return timestamp
 
@@ -324,12 +329,15 @@ class TemperatureStrategyBaseImplementation(TemperatureStrategy):
 
     def matches_current_data(self, data_transformer: DataTransformer) -> bool:
         logger.debug(
-            f"Transformer({data_transformer.current_thermostat_mode},"
-            f"{data_transformer.thermostat_set_temperature})")
+            f"Transformer({data_transformer.current_thermostat_mode}, "
+            f"{data_transformer.thermostat_set_temperature}, "
+            f"{data_transformer.current_thermostat_explanation})"
+        )
         logger.debug(str(self))
         matches = (
             data_transformer.thermostat_set_temperature == self.get_temperature()
             and data_transformer.current_thermostat_mode == self.mode
+            and data_transformer.current_thermostat_explanation == self.explain_strategy()
         )
         logger.debug(f"MATCHES: {matches}")
         return matches
@@ -387,9 +395,9 @@ class WakingUpStrategy(TemperatureStrategyBaseImplementation):
 
     @classmethod
     def meets_criteria(cls, transformer: DataTransformer) -> bool:
-        for alarm in transformer.alarms:
-            waking_up_start = alarm - timedelta(minutes=20)
-            waking_up_end = alarm + timedelta(minutes=50)
+        for wake_time in transformer.wake_times:
+            waking_up_start = wake_time - timedelta(minutes=20)
+            waking_up_end = wake_time + timedelta(minutes=50)
             logger.debug(
                 f"Waking up times: {waking_up_start} - {waking_up_end}."
                 f" Current: {transformer.current_timestamp}"
@@ -408,7 +416,7 @@ class SleepingStrategy(TemperatureStrategyBaseImplementation):
     @classmethod
     def meets_criteria(cls, transformer: DataTransformer) -> bool:
         sleep_start = min(transformer.bed_times)
-        sleep_end = max(transformer.wake_times)
+        sleep_end = mean_timestamp(transformer.wake_times, tz=transformer.local_tzinfo)
         if sleep_start > sleep_end:
             sleep_start -= timedelta(hours=24)
         logger.debug(
@@ -541,13 +549,14 @@ def set_thermostat_values(config: Config, strategy: TemperatureStrategy):
     assert response.status < 300
     logger.debug(f"Thermostat set response: {response.read()}")
 
-    url = f"{config.hass_base_url}/api/states/input_text.thermostat_control_explanation"
-    post_data = {"state": strategy.explain_strategy()}
-    response = request.urlopen(
-        request.Request(url, headers=headers, data=json.dumps(post_data).encode("utf-8"), method="POST")
-    )
-    assert response.status < 300
-    logger.debug(f"Explanation response: {response.read()}")
+    if config.explanation_entity:
+        url = f"{config.hass_base_url}/api/states/{config.explanation_entity}"
+        post_data = {"state": strategy.explain_strategy()}
+        response = request.urlopen(
+            request.Request(url, headers=headers, data=json.dumps(post_data).encode("utf-8"), method="POST")
+        )
+        assert response.status < 300
+        logger.debug(f"Explanation response: {response.read()}")
 
 
 def main():
@@ -584,7 +593,7 @@ def main():
         if strategy.matches_current_data(rules.transformer):
             logger.info(f"No change to strategy {strategy}")
         else:
-            logger.info(f"Setting thermostat strategy {strategy} {strategy.explain_strategy()}")
+            logger.info(f'Setting thermostat strategy {strategy}."')
             set_thermostat_values(config, strategy)
     except Exception as exc:
         logger.error(f"Setting thermostat failed:\n {traceback.format_exc()}")
