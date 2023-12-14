@@ -188,6 +188,22 @@ class DataTransformer:
         return int(self.sensor_map["sensor.number_of_people_at_home"]["state"])
 
     @cached_property
+    def default_next_wake_timestamp(self) -> datetime:
+        wake_time = self._time_str_to_datetime(self.config.default_wake_time)
+        if wake_time < self.current_timestamp:
+            wake_time += timedelta(hours=24)
+
+        return wake_time
+
+    @cached_property
+    def default_sleep_interval(self) -> timedelta:
+        return self._time_str_to_timedelta(self.config.expected_sleep_interval)
+
+    @cached_property
+    def default_latest_sleep_timestamp(self) -> datetime:
+        return self.default_next_wake_timestamp - self.default_sleep_interval
+
+    @cached_property
     def alarms(self) -> Optional[list[datetime]]:
         alarms = []
         for entity_id, entity in self.sensor_map.items():
@@ -210,10 +226,10 @@ class DataTransformer:
 
     @cached_property
     def wake_times(self) -> list[datetime]:
-        default_wake_time = self._time_str_to_datetime(self.config.default_wake_time)
-        wake_times = [a for a in self.alarms if a < default_wake_time]
+        default_wake_time = self.default_next_wake_timestamp
+        wake_times = [a for a in self.alarms if a.time() < default_wake_time.time()] or [default_wake_time]
         logger.debug(f"Wake times: {[wt.isoformat() for wt in wake_times]}")
-        return wake_times or [default_wake_time]
+        return wake_times
 
     @cached_property
     def bed_times(self) -> list[datetime]:
@@ -395,11 +411,11 @@ class WakingUpStrategy(TemperatureStrategyBaseImplementation):
 
     @classmethod
     def meets_criteria(cls, transformer: DataTransformer) -> bool:
-        for wake_time in transformer.wake_times:
+        for index, wake_time in enumerate(transformer.wake_times, 1):
             waking_up_start = wake_time - timedelta(minutes=20)
             waking_up_end = wake_time + timedelta(minutes=50)
             logger.debug(
-                f"Waking up times: {waking_up_start} - {waking_up_end}."
+                f"Waking up time range #{index}: {waking_up_start} - {waking_up_end}."
                 f" Current: {transformer.current_timestamp}"
             )
             if transformer.current_timestamp in TimeRange(waking_up_start, waking_up_end):
@@ -417,8 +433,17 @@ class SleepingStrategy(TemperatureStrategyBaseImplementation):
     def meets_criteria(cls, transformer: DataTransformer) -> bool:
         sleep_start = min(transformer.bed_times)
         sleep_end = mean_timestamp(transformer.wake_times, tz=transformer.local_tzinfo)
-        if sleep_start > sleep_end:
-            sleep_start -= timedelta(hours=24)
+
+        sleep_interval = sleep_end - sleep_start
+        minimum_interval = transformer.default_sleep_interval - timedelta(hours=3)
+        maximum_interval = transformer.default_sleep_interval + timedelta(hours=3)
+        if not minimum_interval < sleep_interval < maximum_interval:
+            # Sometimes using alarms to judge sleep periods leads to weird results, so revert to
+            # sane defaults if that happens.
+            logger.warning(f"Unreliable sleep times: {sleep_start.isoformat()} - {sleep_end.isoformat()}")
+            sleep_start = transformer.default_latest_sleep_timestamp
+            sleep_end = transformer.default_next_wake_timestamp
+
         logger.debug(
             f"Sleep times: {sleep_start} - {sleep_end}."
             f" Current: {transformer.current_timestamp}"
