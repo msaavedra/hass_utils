@@ -432,7 +432,7 @@ class SleepingStrategy(TemperatureStrategyBaseImplementation):
     @classmethod
     def meets_criteria(cls, transformer: DataTransformer) -> bool:
         sleep_start = min(transformer.bed_times)
-        sleep_end = mean_timestamp(transformer.wake_times, tz=transformer.local_tzinfo)
+        sleep_end = max(transformer.wake_times)
 
         sleep_interval = sleep_end - sleep_start
         minimum_interval = transformer.default_sleep_interval - timedelta(hours=3)
@@ -441,8 +441,7 @@ class SleepingStrategy(TemperatureStrategyBaseImplementation):
             # Sometimes using alarms to judge sleep periods leads to weird results, so revert to
             # sane defaults if that happens.
             logger.warning(f"Unreliable sleep times: {sleep_start.isoformat()} - {sleep_end.isoformat()}")
-            sleep_start = transformer.default_latest_sleep_timestamp
-            sleep_end = transformer.default_next_wake_timestamp
+            sleep_end = sleep_start + transformer.default_sleep_interval
 
         logger.debug(
             f"Sleep times: {sleep_start} - {sleep_end}."
