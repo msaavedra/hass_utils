@@ -209,7 +209,10 @@ class DataTransformer:
         for entity_id, entity in self.sensor_map.items():
             if not entity_id.endswith("next_alarm"):
                 continue
-            alarm = datetime.fromisoformat(entity["state"]).astimezone(self.local_tzinfo)
+            try:
+                alarm = datetime.fromisoformat(entity["state"]).astimezone(self.local_tzinfo)
+            except ValueError:
+                continue
             if alarm > self.current_timestamp and (alarm - self.current_timestamp) > timedelta(hours=24):
                 continue
             alarms.append(alarm)
@@ -478,9 +481,9 @@ class PeakUsageStrategy(TemperatureStrategyBaseImplementation):
 class ThermostatRules:
     strategies_by_priority = (
         NobodyHomeStrategy,
+        PeakUsageStrategy,
         WakingUpStrategy,
         ReadyForBedStrategy,
-        PeakUsageStrategy,
         NearlyPeakStrategy,
         SleepingStrategy,
     )
