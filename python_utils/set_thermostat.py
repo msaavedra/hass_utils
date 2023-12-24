@@ -4,7 +4,7 @@ from datetime import time, datetime, timedelta
 from enum import Enum, IntEnum
 from functools import cached_property
 from time import mktime
-from typing import Protocol, Any, Optional, runtime_checkable
+from typing import Protocol, Any, Optional, runtime_checkable, Union
 from zoneinfo import ZoneInfo
 import os
 import re
@@ -169,7 +169,7 @@ class DataTransformer:
             return timedelta(hours=24) - (next_rising - next_setting)
 
     @cached_property
-    def forecast(self) -> Forecast:
+    def forecast(self) -> Union[Forecast, None]:
         for entity_id in self.sensor_map:
             if entity_id.startswith("weather") and entity_id.endswith("daynight"):
                 weather_forecast = self.sensor_map[entity_id]["attributes"]["forecast"]
@@ -259,13 +259,14 @@ class DataTransformer:
             logger.debug(f"Using mode {ThermostatMode.HEATING} because daylight length is {self.daylight_length}.")
             return ThermostatMode.HEATING
 
-        if self.forecast.high > self.config.cool_weather_max:
-            logger.debug(f"Using mode {ThermostatMode.COOLING} because the expected high is {self.forecast.high}.")
-            return ThermostatMode.COOLING
+        if self.forecast:
+            if self.forecast.high > self.config.cool_weather_max:
+                logger.debug(f"Using mode {ThermostatMode.COOLING} because the expected high is {self.forecast.high}.")
+                return ThermostatMode.COOLING
 
-        if self.forecast.low < self.config.warm_weather_min:
-            logger.debug(f"Using mode {ThermostatMode.HEATING} because the expected low is {self.forecast.low}.")
-            return ThermostatMode.HEATING
+            if self.forecast.low < self.config.warm_weather_min:
+                logger.debug(f"Using mode {ThermostatMode.HEATING} because the expected low is {self.forecast.low}.")
+                return ThermostatMode.HEATING
 
         logger.debug(f"Using mode {ThermostatMode.COOLING} because no other checks matched.")
         return ThermostatMode.COOLING
