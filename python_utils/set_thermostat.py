@@ -255,16 +255,16 @@ class DataTransformer:
             logger.debug(f"Using mode {ThermostatMode.HEATING} because we're under hard min temp.")
             return ThermostatMode.HEATING
 
-        if self.daylight_length < timedelta(hours=10, minutes=30):
+        if self.daylight_length < timedelta(hours=11):
             logger.debug(f"Using mode {ThermostatMode.HEATING} because daylight length is {self.daylight_length}.")
             return ThermostatMode.HEATING
 
         if self.forecast:
-            if self.forecast.high > self.config.cool_weather_max:
+            if self.forecast.high > self.config.warm_weather_max:
                 logger.debug(f"Using mode {ThermostatMode.COOLING} because the expected high is {self.forecast.high}.")
                 return ThermostatMode.COOLING
 
-            if self.forecast.low < self.config.warm_weather_min:
+            if self.forecast.low < self.config.cool_weather_min:
                 logger.debug(f"Using mode {ThermostatMode.HEATING} because the expected low is {self.forecast.low}.")
                 return ThermostatMode.HEATING
 
