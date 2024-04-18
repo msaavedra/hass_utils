@@ -559,9 +559,9 @@ def save_sensor_data_json(data):
     path = os.path.join(dir_name, "ha_states.json")
     try:
         with open(path, "w") as f:
-            return json.dump(f, indent=2)
+            return json.dump(data, f, indent=2)
     except Exception as exc:
-        raise ConfigFileError(f"Could not json data to '{path}'.") from exc
+        raise ConfigFileError(f"Could not write json data to '{path}'.") from exc
 
 
 def set_environment():
