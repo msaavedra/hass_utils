@@ -46,6 +46,7 @@ class Config:
     syslog_path: str = "/dev/log"
     syslog_level: str = "INFO"
     explanation_entity: Optional[str] = "input_text.thermostat_control_explanation"
+    outdoor_temp_sensor: Optional[str] = None
 
 
 @dataclass
@@ -130,6 +131,17 @@ class DataTransformer:
     @cached_property
     def sensor_map(self):
         return {s["entity_id"]: s for s in self.sensor_data}
+
+    @cached_property
+    def current_outdoor_temperature(self) -> Optional[int]:
+        if not self.config.outdoor_temp_sensor:
+            return None
+
+        temp: Union[str, None] = self.sensor_map.get(self.config.outdoor_temp_sensor, {}).get("state")
+        if temp is None or not temp.lstrip("-").strip(".").isdigit():
+            return None
+
+        return int(temp)
 
     @cached_property
     def current_indoor_temperature(self) -> int:
@@ -259,13 +271,28 @@ class DataTransformer:
             logger.debug(f"Using mode {ThermostatMode.HEATING} because daylight length is {self.daylight_length}.")
             return ThermostatMode.HEATING
 
-        if self.forecast:
+        if self.forecast and self.forecast.high and self.forecast.low:
             if self.forecast.high > self.config.warm_weather_max:
                 logger.debug(f"Using mode {ThermostatMode.COOLING} because the expected high is {self.forecast.high}.")
                 return ThermostatMode.COOLING
 
             if self.forecast.low < self.config.cool_weather_min:
                 logger.debug(f"Using mode {ThermostatMode.HEATING} because the expected low is {self.forecast.low}.")
+                return ThermostatMode.HEATING
+
+        elif self.current_outdoor_temperature:
+            if self.current_outdoor_temperature > self.config.warm_weather_max:
+                logger.debug(
+                    f"Using mode {ThermostatMode.COOLING} because "
+                    f"the outdoor temp is {self.current_outdoor_temperature}."
+                )
+                return ThermostatMode.COOLING
+
+            if self.current_outdoor_temperature < self.config.cool_weather_min:
+                logger.debug(
+                    f"Using mode {ThermostatMode.COOLING} because "
+                    f"the outdoor temp is {self.current_outdoor_temperature}."
+                )
                 return ThermostatMode.HEATING
 
         logger.debug(f"Using mode {ThermostatMode.COOLING} because no other checks matched.")
@@ -545,6 +572,7 @@ def get_config():
 def get_sensor_data(hass_base_url):
     from urllib import request
     import json
+    import pprint
     url = f"{hass_base_url}/api/states"
     token = os.environ["HASS_TOKEN"]
     headers = {
@@ -553,7 +581,10 @@ def get_sensor_data(hass_base_url):
     }
     response = request.urlopen(request.Request(url, headers=headers, method="GET"))
     assert response.status < 300
-    return json.loads(response.read())
+    pprinter = pprint.PrettyPrinter()
+    sensor_data = json.loads(response.read())
+    logger.debug(pprinter.pprint(sensor_data))
+    return sensor_data
 
 
 def set_thermostat_values(config: Config, strategy: TemperatureStrategy):
@@ -624,7 +655,7 @@ def main():
             logger.info(f'Setting thermostat strategy {strategy}."')
             set_thermostat_values(config, strategy)
     except Exception as exc:
-        logger.error(f"Setting thermostat failed:\n {traceback.format_exc()}")
+        logger.error(f"Setting thermostat failed", exc_info=exc)
         return 1
 
     return 0
