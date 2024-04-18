@@ -554,7 +554,7 @@ def load_json(file_name):
         raise ConfigFileError(f"Could not load json data from '{path}'.") from exc
 
 
-def save_sensor_data_json(data)
+def save_sensor_data_json(data):
     dir_name = os.path.dirname(__file__)
     path = os.path.join(dir_name, "ha_states.json")
     try:
