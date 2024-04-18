@@ -271,7 +271,7 @@ class DataTransformer:
             logger.debug(f"Using mode {ThermostatMode.HEATING} because daylight length is {self.daylight_length}.")
             return ThermostatMode.HEATING
 
-        if self.forecast and self.forecast.high and self.forecast.low:
+        if self.forecast:
             if self.forecast.high > self.config.warm_weather_max:
                 logger.debug(f"Using mode {ThermostatMode.COOLING} because the expected high is {self.forecast.high}.")
                 return ThermostatMode.COOLING
@@ -281,6 +281,7 @@ class DataTransformer:
                 return ThermostatMode.HEATING
 
         elif self.current_outdoor_temperature:
+            # We prefer to use forecasts, but use the current outdoor temp if the forecast isn't available.
             if self.current_outdoor_temperature > self.config.warm_weather_max:
                 logger.debug(
                     f"Using mode {ThermostatMode.COOLING} because "
@@ -579,7 +580,7 @@ def get_config():
     return Config(**config_data)
 
 
-def get_sensor_data(hass_base_url):
+def get_sensor_data(hass_base_url, syslog_level):
     from urllib import request
     import json
     url = f"{hass_base_url}/api/states"
@@ -591,7 +592,8 @@ def get_sensor_data(hass_base_url):
     response = request.urlopen(request.Request(url, headers=headers, method="GET"))
     assert response.status < 300
     sensor_data = json.loads(response.read())
-    save_sensor_data_json(sensor_data)
+    if syslog_level == "DEBUG":
+        save_sensor_data_json(sensor_data)
     return sensor_data
 
 
@@ -654,7 +656,7 @@ def main():
 
     try:
         set_environment()
-        sensor_data = get_sensor_data(config.hass_base_url)
+        sensor_data = get_sensor_data(config.hass_base_url, config.syslog_level)
         rules = ThermostatRules(config, sensor_data)
         strategy = rules.get_strategy()
         if strategy.matches_current_data(rules.transformer):
