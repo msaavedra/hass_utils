@@ -554,6 +554,16 @@ def load_json(file_name):
         raise ConfigFileError(f"Could not load json data from '{path}'.") from exc
 
 
+def save_sensor_data_json(data)
+    dir_name = os.path.dirname(__file__)
+    path = os.path.join(dir_name, "ha_states.json")
+    try:
+        with open(path, "w") as f:
+            return json.dump(f, indent=2)
+    except Exception as exc:
+        raise ConfigFileError(f"Could not json data to '{path}'.") from exc
+
+
 def set_environment():
     env_data = load_json(".env.json")
     if "HASS_TOKEN" not in env_data:
@@ -572,7 +582,6 @@ def get_config():
 def get_sensor_data(hass_base_url):
     from urllib import request
     import json
-    import pprint
     url = f"{hass_base_url}/api/states"
     token = os.environ["HASS_TOKEN"]
     headers = {
@@ -581,9 +590,8 @@ def get_sensor_data(hass_base_url):
     }
     response = request.urlopen(request.Request(url, headers=headers, method="GET"))
     assert response.status < 300
-    pprinter = pprint.PrettyPrinter()
     sensor_data = json.loads(response.read())
-    logger.debug(pprinter.pformat(sensor_data))
+    save_sensor_data_json(sensor_data)
     return sensor_data
 
 

@@ -1,5 +1,6 @@
 # Local config file
 python_utils/config.json
+python_utils/ha_states.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
