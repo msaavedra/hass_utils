@@ -583,7 +583,7 @@ def get_sensor_data(hass_base_url):
     assert response.status < 300
     pprinter = pprint.PrettyPrinter()
     sensor_data = json.loads(response.read())
-    logger.debug(pprinter.pprint(sensor_data))
+    logger.debug(pprinter.pformat(sensor_data))
     return sensor_data
 
 
