@@ -484,7 +484,7 @@ class SleepingStrategy(TemperatureStrategyBaseImplementation):
 
 class NearlyPeakStrategy(TemperatureStrategyBaseImplementation):
     """When it's almost peak usage time, we should use a bit more energy while it's still cheap."""
-    cooling_level = TemperatureLevel.LOW
+    cooling_level = TemperatureLevel.LOWEST
     heating_level = TemperatureLevel.MEDIUM  # set to high if electric heat
 
     @classmethod
@@ -499,7 +499,7 @@ class PeakUsageStrategy(TemperatureStrategyBaseImplementation):
     # This only reduces power use for cooling, as most heaters are natural-gas-powered, and there
     # usually aren't time of use plans for gas. There are electric heaters, though, so this can
     # be subclassed to handle those if necessary.
-    cooling_level = TemperatureLevel.HIGHEST
+    cooling_level = TemperatureLevel.HIGH
     heating_level = TemperatureLevel.MEDIUM
 
     @classmethod
